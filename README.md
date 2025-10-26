@@ -143,6 +143,7 @@ swag_init_script(
     parse_internal = True,                     # Parse internal packages
     parse_vendor = False,                      # Parse vendor folder
     output_types = ["go", "json", "yaml"],     # Which files to generate
+    extra_args = ["--generatedTime=false"],      # Pass additional swag CLI flags
 )
 ```
 
@@ -184,9 +185,12 @@ Browse to `http://localhost:8080/swagger/index.html` to view your API documentat
 
 **Note**: The Bazel rules generate the documentation files - you don't need framework integration if you just want the `swagger.json` file!
 
-## Example
+## Examples
 
-See the [example](example/) directory for a complete working example.
+See the [example](example/) directory for complete working examples:
+
+- [`example/`](example/) – standard library pet store sample.
+- [`example/fiber/`](example/fiber/) – Fiber server showcasing Swagger UI integration.
 
 ## Supported Platforms
 

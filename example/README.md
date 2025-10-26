@@ -42,12 +42,12 @@ The server will start on `http://localhost:8080` and accept the documented API c
 
 2. **Generation**: The `swag_init_script` rule in `BUILD.bazel` scans the Go files and generates documentation:
    ```python
-   swag_init_script(
-       name = "generate_docs",
-       general_info = "example/main.go",
-       output_dir = "example/docs",
-       search_dirs = ["example"],
-   )
+swag_init_script(
+    name = "generate_docs",
+    general_info = "example/main.go",
+    output_dir = "example/docs",
+    search_dirs = ["example"],
+)
    ```
 
 3. **Output**: Three files are created in `example/docs/` that can be:
@@ -99,7 +99,7 @@ type Pet struct {
 
 While this example uses `net/http`, you can use these rules with any Go web framework:
 
-- **Fiber**: Use with [fiber-swagger](https://github.com/swaggo/fiber-swagger)
+- **Fiber**: Use with [fiber-swagger](https://github.com/swaggo/fiber-swagger). A full Bazel sample lives in [`example/fiber`](fiber/).
 - **Gin**: Use with [gin-swagger](https://github.com/swaggo/gin-swagger)
 - **Echo**: Use with [echo-swagger](https://github.com/swaggo/echo-swagger)
 

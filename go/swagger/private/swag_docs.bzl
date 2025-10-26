@@ -3,88 +3,124 @@
 def _swag_docs_impl(ctx):
     """Implementation of swag_docs rule.
     
-    Generates swagger.json, swagger.yaml, and docs.go from Go source files with swag annotations.
+    Generates Swagger artifacts (swagger.json, swagger.yaml, docs.go) from Go source files with swag annotations.
     """
     swag = ctx.executable._swag
     
     # Build the swag init command arguments
     args = ctx.actions.args()
     args.add("init")
-    
+
     # General info file (main.go with API annotations)
     args.add("--generalInfo", ctx.file.general_info.path)
-    
+
     # Output directory - use a temporary directory in bazel-bin
     output_dir = ctx.actions.declare_directory(ctx.label.name + "_docs")
     args.add("--output", output_dir.path)
-    
-    # Search directories
+
+    # Search directories.  If the caller does not provide any explicit directories we
+    # fall back to the general_info file's directory so that swag has a sensible root.
     if ctx.attr.search_dirs:
-        args.add("--dir", ",".join(ctx.attr.search_dirs))
-    
+        args.add_all("--dir", ctx.attr.search_dirs)
+    else:
+        default_dir = ctx.file.general_info.path.rpartition("/")[0]
+        if not default_dir:
+            default_dir = "."
+        args.add("--dir", default_dir)
+
     # Optional flags
     if ctx.attr.parse_dependency:
         args.add("--parseDependency")
-    
+
     if ctx.attr.parse_internal:
         args.add("--parseInternal")
-    
+
     if ctx.attr.parse_vendor:
         args.add("--parseVendor")
-    
+
     if ctx.attr.parse_depth:
         args.add("--parseDepth", str(ctx.attr.parse_depth))
-    
+
     if ctx.attr.output_types:
         args.add("--outputTypes", ",".join(ctx.attr.output_types))
-    
+
     if ctx.attr.instance_name:
         args.add("--instanceName", ctx.attr.instance_name)
-    
-    # Declare output files
-    swagger_json = ctx.actions.declare_file(ctx.label.name + "/swagger.json")
-    swagger_yaml = ctx.actions.declare_file(ctx.label.name + "/swagger.yaml")
-    docs_go = ctx.actions.declare_file(ctx.label.name + "/docs.go")
-    
+
+    if ctx.attr.extra_args:
+        args.add_all(ctx.attr.extra_args)
+
+    # Declare the requested output files.
+    supported_output_files = {
+        "json": "swagger.json",
+        "yaml": "swagger.yaml",
+        "go": "docs.go",
+    }
+    requested_types = {}
+    unknown_types = []
+    for t in ctx.attr.output_types:
+        normalized = t.lower()
+        if normalized in supported_output_files:
+            requested_types[normalized] = True
+        else:
+            unknown_types.append(t)
+
+    if unknown_types:
+        fail("swag_docs: unsupported output_types: %s" % ", ".join(unknown_types))
+    outputs = {}
+    if requested_types.get("json"):
+        outputs["json"] = ctx.actions.declare_file(ctx.label.name + "/swagger.json")
+    if requested_types.get("yaml"):
+        outputs["yaml"] = ctx.actions.declare_file(ctx.label.name + "/swagger.yaml")
+    if requested_types.get("go"):
+        outputs["go"] = ctx.actions.declare_file(ctx.label.name + "/docs.go")
+
+    if not outputs:
+        fail("swag_docs requires at least one output type")
+
     # Collect all source files as inputs
     srcs = []
     for src in ctx.attr.srcs:
         srcs.extend(src[DefaultInfo].files.to_list())
-    
+
+    inputs = depset(srcs + [ctx.file.general_info])
+
     # Run swag init
     ctx.actions.run(
         executable = swag,
         arguments = [args],
-        inputs = srcs + [ctx.file.general_info],
+        inputs = inputs,
         outputs = [output_dir],
         mnemonic = "SwagInit",
         progress_message = "Generating Swagger documentation for %s" % ctx.label.name,
     )
-    
+
     # Copy files from output_dir to declared outputs
+    copy_commands = [
+        "set -euo pipefail",
+    ]
+    for kind, file in outputs.items():
+        copy_commands.append("mkdir -p $(dirname {dest})".format(dest = file.path))
+        copy_commands.append(
+            "if [ -f {dir}/{filename} ]; then cp {dir}/{filename} {dest}; else echo 'Expected {filename} in {dir}' >&2; exit 1; fi".format(
+                dir = output_dir.path,
+                filename = supported_output_files[kind],
+                dest = file.path,
+            ),
+        )
+
     ctx.actions.run_shell(
         inputs = [output_dir],
-        outputs = [swagger_json, swagger_yaml, docs_go],
-        command = """
-        cp {dir}/swagger.json {json}
-        cp {dir}/swagger.yaml {yaml}
-        cp {dir}/docs.go {go}
-        """.format(
-            dir = output_dir.path,
-            json = swagger_json.path,
-            yaml = swagger_yaml.path,
-            go = docs_go.path,
-        ),
+        outputs = list(outputs.values()),
+        command = "\n".join(copy_commands),
     )
-    
+
+    output_groups = {k: depset([v]) for (k, v) in outputs.items()}
+    output_groups["all"] = depset(list(outputs.values()))
+
     return [
-        DefaultInfo(files = depset([swagger_json, swagger_yaml, docs_go])),
-        OutputGroupInfo(
-            json = depset([swagger_json]),
-            yaml = depset([swagger_yaml]),
-            go = depset([docs_go]),
-            all = depset([swagger_json, swagger_yaml, docs_go]),
-        ),
+        DefaultInfo(files = depset(list(outputs.values()))),
+        OutputGroupInfo(**output_groups),
     ]
 
 swag_docs = rule(
@@ -100,7 +136,7 @@ swag_docs = rule(
             doc = "Main Go file containing general API info annotations (@title, @version, etc.)",
         ),
         "search_dirs": attr.string_list(
-            doc = "Comma-separated list of directories to search for annotations (relative to workspace root)",
+            doc = "List of directories to search for annotations (relative to workspace root)",
         ),
         "parse_dependency": attr.bool(
             default = False,
@@ -120,10 +156,13 @@ swag_docs = rule(
         ),
         "output_types": attr.string_list(
             default = ["go", "json", "yaml"],
-            doc = "Output types (go, json, yaml)",
+            doc = "Output types to materialize (subset of go, json, yaml)",
         ),
         "instance_name": attr.string(
             doc = "Instance name for docs.go (default: swagger)",
+        ),
+        "extra_args": attr.string_list(
+            doc = "Additional raw flags to pass to the swag CLI.",
         ),
         "_swag": attr.label(
             default = Label("@com_github_swaggo_swag_repository_tools//:swag"),
@@ -133,18 +172,18 @@ swag_docs = rule(
         ),
     },
     doc = """Generates Swagger documentation from Go code with swag annotations.
-    
+
     Example:
         swag_docs(
             name = "swagger_docs",
             srcs = glob(["**/*.go"]),
             general_info = "main.go",
             search_dirs = ["./"],
-            parse_dependency = True,
-            parse_internal = True,
+            output_types = ["json", "yaml"],
+            extra_args = ["--generatedTime=false"],
         )
-    
-    This generates swagger.json, swagger.yaml, and docs.go from annotated Go source files.
+
+    This generates the requested Swagger artifacts from annotated Go source files under bazel-bin.
     """,
 )
 
@@ -156,6 +195,26 @@ def _swag_init_script_impl(ctx):
     """
     swag = ctx.executable._swag
     
+    # Create the command fragments used by the shell wrapper
+    parse_flags = []
+    if ctx.attr.parse_dependency:
+        parse_flags.append("--parseDependency")
+    if ctx.attr.parse_internal:
+        parse_flags.append("--parseInternal")
+    if ctx.attr.parse_vendor:
+        parse_flags.append("--parseVendor")
+
+    parse_block = ""
+    if parse_flags:
+        parse_block = "  " + " \\\n  ".join(parse_flags) + " \\\n"
+
+    extra_block = ""
+    if ctx.attr.extra_args:
+        extra_block = "  " + " \\\n  ".join(ctx.attr.extra_args) + " \\\n"
+
+    search_dirs = ",".join(ctx.attr.search_dirs) if ctx.attr.search_dirs else "./"
+    output_types = ",".join(ctx.attr.output_types)
+
     # Create the script
     script_content = """#!/bin/bash
 set -e
@@ -184,8 +243,7 @@ cd "$BUILD_WORKSPACE_DIRECTORY"
   --generalInfo {general_info} \\
   --output {output_dir} \\
   --dir {search_dirs} \\
-  {parse_flags} \\
-  --outputTypes {output_types}
+{parse_block}{extra_block}  --outputTypes {output_types}
 
 echo ""
 echo "✓ Swagger documentation generated successfully!"
@@ -197,13 +255,10 @@ ls -1 "$BUILD_WORKSPACE_DIRECTORY/{output_dir}" 2>/dev/null || true
         swag = swag.short_path,
         general_info = ctx.attr.general_info,
         output_dir = ctx.attr.output_dir,
-        search_dirs = ",".join(ctx.attr.search_dirs) if ctx.attr.search_dirs else "./",
-        parse_flags = " ".join([
-            "--parseDependency" if ctx.attr.parse_dependency else "",
-            "--parseInternal" if ctx.attr.parse_internal else "",
-            "--parseVendor" if ctx.attr.parse_vendor else "",
-        ]),
-        output_types = ",".join(ctx.attr.output_types),
+        search_dirs = search_dirs,
+        parse_block = parse_block,
+        extra_block = extra_block,
+        output_types = output_types,
     )
     
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
@@ -251,6 +306,9 @@ swag_init_script = rule(
             default = ["go", "json", "yaml"],
             doc = "Output types (go, json, yaml)",
         ),
+        "extra_args": attr.string_list(
+            doc = "Additional flags forwarded directly to the swag CLI.",
+        ),
         "_swag": attr.label(
             default = Label("@com_github_swaggo_swag_repository_tools//:swag"),
             allow_single_file = True,
@@ -268,6 +326,7 @@ swag_init_script = rule(
             search_dirs = ["cmd/server", "internal/handlers"],
             parse_dependency = True,
             parse_internal = True,
+            extra_args = ["--generatedTime=false"],
         )
     
     Run with: bazel run //:generate_swagger

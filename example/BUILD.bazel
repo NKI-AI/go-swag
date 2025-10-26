@@ -5,7 +5,7 @@ load("//go/swagger:def.bzl", "swag_init_script")
 # This is the main use case - generating swagger.json/yaml from Go annotations
 swag_init_script(
     name = "generate_docs",
-    general_info = "main.go",
+    general_info = "example/main.go",
     output_dir = "example/docs",
     search_dirs = ["example"],
     parse_dependency = False,
