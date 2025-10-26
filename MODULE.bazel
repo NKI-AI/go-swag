@@ -1,0 +1,16 @@
+"""
+Swag rules for Bazel - Generate Swagger/OpenAPI documentation from Go code annotations
+"""
+
+module(
+    name = "rules_go_swagger",
+    version = "1.0.0",
+)
+
+bazel_dep(name = "rules_go", version = "0.54.0")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+
+# Register swag tool
+swag = use_extension("//go/swagger:extensions.bzl", "swag_extension")
+use_repo(swag, "com_github_swaggo_swag_repository_tools")
+

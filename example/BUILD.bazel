@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//go/swagger:def.bzl", "swag_init_script")
+
+# Generate Swagger documentation
+# This is the main use case - generating swagger.json/yaml from Go annotations
+swag_init_script(
+    name = "generate_docs",
+    general_info = "example/main.go",
+    output_dir = "example/docs",
+    search_dirs = ["example"],
+    parse_dependency = False,
+    parse_internal = False,
+)
+
+go_library(
+    name = "example_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/tnarg/rules_go_swagger/example",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "example",
+    embed = [":example_lib"],
+    visibility = ["//visibility:public"],
+)
