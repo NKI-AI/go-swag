@@ -1,0 +1,35 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//go/swagger:def.bzl", "swag_init_script")
+
+# Generate Swagger documentation for Fiber example
+swag_init_script(
+    name = "generate_docs",
+    general_info = "main.go",
+    output_dir = "fiber_example/docs",
+    search_dirs = ["fiber_example"],
+    parse_dependency = False,
+    parse_internal = False,
+)
+
+go_library(
+    name = "fiber_example_lib",
+    srcs = [
+        "main.go",
+        "utils.go",
+    ],
+    importpath = "github.com/tnarg/rules_go_swagger/fiber_example",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_github_gofiber_fiber_v2//:fiber",
+        "@com_github_gofiber_fiber_v2//middleware/cors",
+        "@com_github_gofiber_fiber_v2//middleware/logger",
+    ],
+)
+
+go_binary(
+    name = "fiber_example",
+    data = glob(["docs/swagger.json"], allow_empty = True),
+    embed = [":fiber_example_lib"],
+    visibility = ["//visibility:public"],
+)
+

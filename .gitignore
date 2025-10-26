@@ -1,0 +1,4 @@
+bazel*
+MODULE.bazel.lock
+examples/gofiber/docs
+examples/http/docs

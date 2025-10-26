@@ -1,0 +1,42 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//go/swagger:def.bzl", "swag_init_script")
+
+# Generate Swagger documentation
+# This is the main use case - generating swagger.json/yaml from Go annotations
+swag_init_script(
+    name = "generate_docs",
+    general_info = "main.go",
+    output_dir = "examples/gofiber/docs",
+    search_dirs = ["examples/gofiber"],
+    parse_dependency = False,
+    parse_internal = False,
+)
+
+# Library for generated Swagger docs
+go_library(
+    name = "docs",
+    srcs = ["docs/docs.go"],
+    importpath = "github.com/NKI-AI/rules-go-swag/examples/gofiber/docs",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_swaggo_swag//:swag"],
+)
+
+go_library(
+    name = "gofiber_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/NKI-AI/rules-go-swag/examples/gofiber",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":docs",
+        "@com_github_gofiber_fiber_v2//:fiber",
+        "@com_github_swaggo_fiber_swagger//:fiber-swagger",
+    ],
+)
+
+go_binary(
+    name = "example",
+    data = ["docs/swagger.json"],
+    embed = [":gofiber_lib"],
+    visibility = ["//visibility:public"],
+)
+
