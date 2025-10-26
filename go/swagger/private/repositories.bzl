@@ -3,10 +3,7 @@
 _SWAG_REPOSITORY_TOOLS_BUILD_FILE = """
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "swag",
-    srcs = ["swag"],
-)
+exports_files(["swag"])
 """
 
 def _swag_repository_tools_impl(ctx):

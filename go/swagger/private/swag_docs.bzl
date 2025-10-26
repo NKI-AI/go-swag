@@ -160,11 +160,27 @@ def _swag_init_script_impl(ctx):
     script_content = """#!/bin/bash
 set -e
 
+# Locate the swag binary from runfiles
+if [[ -z "${{RUNFILES_DIR}}" ]]; then
+  # Find runfiles directory
+  if [[ -d "$0.runfiles" ]]; then
+    export RUNFILES_DIR="$0.runfiles"
+  elif [[ -d "${{0}}.runfiles" ]]; then
+    export RUNFILES_DIR="${{0}}.runfiles"
+  fi
+fi
+
+SWAG="${{RUNFILES_DIR}}/_main/{swag}"
+if [[ ! -x "${{SWAG}}" ]]; then
+  echo "Error: Cannot find swag executable at ${{SWAG}}"
+  exit 1
+fi
+
 # Change to workspace directory
 cd "$BUILD_WORKSPACE_DIRECTORY"
 
 # Run swag init
-{swag} init \\
+"${{SWAG}}" init \\
   --generalInfo {general_info} \\
   --output {output_dir} \\
   --dir {search_dirs} \\
